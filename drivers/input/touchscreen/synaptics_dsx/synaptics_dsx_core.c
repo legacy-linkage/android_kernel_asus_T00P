@@ -48,6 +48,10 @@ struct switch_dev pfs_switch_touch;
 
 #define F12_DATA_15_WORKAROUND
 
+int keys_value[3] = {KEY_BACK, KEY_HOME, KEY_MENU};
+int keys_last_status= 0;
+int last_touch_count = 0;
+
 /*
 #define IGNORE_FN_INIT_FAILURE
 */
@@ -891,7 +895,7 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		struct synaptics_rmi4_fn *fhandler)
 {
-	int retval;
+	int retval, i;
 	unsigned char touch_count = 0; /* number of touch points */
 	unsigned char finger;
 	unsigned char fingers_to_process;
@@ -903,6 +907,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	int wx;
 	int wy;
 	int temp;
+	int keys_status = 0;
 	struct synaptics_rmi4_f12_extra_data *extra_data;
 	struct synaptics_rmi4_f12_finger_data *data;
 	struct synaptics_rmi4_f12_finger_data *finger_data;
@@ -950,7 +955,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			__func__, fingers_to_process);
 	}
 
-#ifdef F12_DATA_15_WORKAROUND
+#ifdef F12_DATA_15_WORKAROUND //true
 	fingers_to_process = max(fingers_to_process, fingers_already_present);
 #endif
 
@@ -973,11 +978,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		finger_status = finger_data->object_type_and_status;
 
 		if (finger_status == F12_FINGER_STATUS || finger_status == F12_GLOVED_FINGER_STATUS) {
-#ifdef TYPE_B_PROTOCOL
-			input_mt_slot(rmi4_data->input_dev, finger);
-			input_mt_report_slot_state(rmi4_data->input_dev,
-					MT_TOOL_FINGER, 1);
-#endif
+			touch_count++;
 
 #ifdef F12_DATA_15_WORKAROUND
 			fingers_already_present = finger + 1;
@@ -1004,6 +1005,31 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			if (rmi4_data->hw_if->board_data->y_flip)
 				y = rmi4_data->sensor_max_y - y;
 
+		    //printk("Finger %d: finger_status = 0x%02x,x = %d,y = %d\n",finger,finger_status,x, y);
+
+//ASUS_BSP Freeman: change way to report key  ++++
+			if(y > 1310 && y < 1380)
+			{
+				if(x > 15 && x < 185) {
+					keys_status |= 0x01;
+					continue;
+				}
+				if(x > 260 && x < 470) {
+					keys_status |= 0x02;
+					continue;
+				}
+				if(x > 550 && x < 720) {
+					keys_status |= 0x04;
+					continue;
+				}
+				continue;
+			}
+//ASUS_BSP Freeman: change way to report key  ---
+#ifdef TYPE_B_PROTOCOL
+			input_mt_slot(rmi4_data->input_dev, finger);
+			input_mt_report_slot_state(rmi4_data->input_dev,
+					MT_TOOL_FINGER, 1);
+#endif
 			input_report_key(rmi4_data->input_dev,
 					BTN_TOUCH, 1);
 			input_report_key(rmi4_data->input_dev,
@@ -1022,19 +1048,10 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			input_mt_sync(rmi4_data->input_dev);
 #endif
 
-			dev_dbg(rmi4_data->pdev->dev.parent,
-					"%s: Finger %d:\n"
-					"status = 0x%02x\n"
-					"x = %d\n"
-					"y = %d\n"
-					"wx = %d\n"
-					"wy = %d\n",
-					__func__, finger,
-					finger_status,
-					x, y, wx, wy);
+			/*if(touch_count %1000 == 0)*/
 
-			touch_count++;
 		} else {
+			//printk("Finger %d: finger_status = 0x%02x\n",finger,finger_status);
 #ifdef TYPE_B_PROTOCOL
 			input_mt_slot(rmi4_data->input_dev, finger);
 			input_mt_report_slot_state(rmi4_data->input_dev,
@@ -1042,6 +1059,23 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 #endif
 		}
 	}
+
+	//printk("keys status <0x%02x --> 0x%02x>, touch_count=%d\n", keys_last_status, keys_status, touch_count);
+	for(i = 0; i < ARRAY_SIZE(keys_value); i ++) {
+		int temp = (keys_status & 0x07) & (0x01 << i);
+		int temp_old = (keys_last_status & 0x07) & (0x01 << i);
+		if(temp) {
+			if(!last_touch_count  || (keys_last_status && temp_old != temp)){
+				//printk("report key=%d down\n", keys_value[i]);
+				input_report_key(rmi4_data->input_dev,keys_value[i], 0x01);
+			}
+		}else if(temp_old) {
+			//printk("report key=%d up\n", keys_value[i]);
+			input_report_key(rmi4_data->input_dev,keys_value[i], 0x00);
+		}
+	}
+
+	keys_last_status = keys_status;
 
 //ASUS_BSP Freeman:print the report rate of touch screen +++++++++++++
 	if(REPORT_RATE == 1){
@@ -1069,10 +1103,19 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 				BTN_TOUCH, 0);
 		input_report_key(rmi4_data->input_dev,
 				BTN_TOOL_FINGER, 0);
+
+//ASUS_BSP Freeman: change way to report key ++++
+		//input_report_key(rmi4_data->input_dev,KEY_BACK,0);
+		//input_report_key(rmi4_data->input_dev,KEY_HOME,0);
+		//input_report_key(rmi4_data->input_dev,KEY_MENU,0);
+//ASUS_BSP Freeman: change way to report key  ----
+
 #ifndef TYPE_B_PROTOCOL
 		input_mt_sync(rmi4_data->input_dev);
 #endif
 	}
+
+	last_touch_count = touch_count;
 
 	input_sync(rmi4_data->input_dev);
 
@@ -1399,7 +1442,7 @@ static void synaptics_rmi4_set_intr_mask(struct synaptics_rmi4_fn *fhandler,
 }
 
 //ASUS_BSP Freeman: add for creating virtual_key_maps +++
-#define MAX_LEN		200
+/*#define MAX_LEN		200
 static ssize_t wTP_virtual_keys_register(struct kobject *kobj,
 		     struct kobj_attribute *attr, char *buf)
 {
@@ -1427,7 +1470,7 @@ static struct attribute_group virtual_key_properties_attr_group = {
 	.attrs = virtual_key_properties_attrs,
 };
 
-struct kobject *virtual_key_properties_kobj = NULL;
+struct kobject *virtual_key_properties_kobj = NULL;*/
 //ASUS_BSP Freeman: add for creating virtual_key_maps ---
 
 static int synaptics_rmi4_f01_init(struct synaptics_rmi4_data *rmi4_data,
@@ -2313,7 +2356,7 @@ static void synaptics_rmi4_set_params(struct synaptics_rmi4_data *rmi4_data)
 	input_set_abs_params(rmi4_data->input_dev,
 			ABS_MT_POSITION_Y, 0,
 			//rmi4_data->sensor_max_y, 0, 0);
-			1280, 0, 0);
+			1360, 0, 0);
 
 #ifdef REPORT_2D_W
 	input_set_abs_params(rmi4_data->input_dev,
@@ -3002,7 +3045,7 @@ static int __devinit synaptics_rmi4_probe(struct platform_device *pdev)
 	struct synaptics_rmi4_data *rmi4_data;
 	const struct synaptics_dsx_hw_interface *hw_if;
 	const struct synaptics_dsx_board_data *bdata;
-	int rc = 0;
+	//int rc = 0;
 #ifdef CONFIG_I2C_STRESS_TEST
 	struct i2c_client *client;
 #endif
@@ -3148,13 +3191,13 @@ static int __devinit synaptics_rmi4_probe(struct platform_device *pdev)
 	}
 
 //ASUS_BSP Freeman: add for creating virtual_key_maps +++
-	if(virtual_key_properties_kobj == NULL){
+/*	if(virtual_key_properties_kobj == NULL){
 		virtual_key_properties_kobj = kobject_create_and_add("board_properties", NULL);
 	if (virtual_key_properties_kobj)
 		rc = sysfs_create_group(virtual_key_properties_kobj, &virtual_key_properties_attr_group);
 	if (!virtual_key_properties_kobj || rc)
 		pr_err("[touch_synaptics] failed to create wTP virtual key map!\n");
-	}
+	}*/
 //ASUS_BSP Freeman: add for creating virtual_key_maps ---
 
 //ASUS BSP Freeman: /sys/class/switch/touch +++++
@@ -3401,10 +3444,14 @@ static int fb_notifier_callback(struct notifier_block *self,
 	if (evdata && evdata->data && event == FB_EVENT_BLANK &&
 		rmi4_data){ // && rmi4_data->i2c_client) {
 		blank = evdata->data;
-		if (*blank == FB_BLANK_UNBLANK)
+		if (*blank == FB_BLANK_UNBLANK) {
+			ASUSEvtlog("[PM]request_suspend_state: (3->0)\n");
 			synaptics_rmi4_resume(&(rmi4_data->input_dev->dev));
-		else if (*blank == FB_BLANK_POWERDOWN)
+		}
+		else if (*blank == FB_BLANK_POWERDOWN) {
+			ASUSEvtlog("[PM]request_suspend_state: (0->3)\n");
 			synaptics_rmi4_suspend(&(rmi4_data->input_dev->dev));
+		}
 	}
 
 	return 0;

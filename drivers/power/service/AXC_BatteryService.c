@@ -2824,7 +2824,7 @@ static void AXC_BatteryService_suspend(struct AXI_BatteryServiceFacade *bat)
 	AXC_BatteryService  *_this=
 	container_of(bat, AXC_BatteryService, miParent);
 
-	printk("[BAT][Ser]:suspend()+++\n");
+	//printk("[BAT][Ser]:suspend()+++\n");
  
 	_this->HasCableBeforeSuspend = _this->BatteryService_IsCable;
 #ifdef CONFIG_EEPROM_PADSTATION
@@ -2858,7 +2858,7 @@ static void AXC_BatteryService_suspend(struct AXI_BatteryServiceFacade *bat)
 #endif	
 //Eason: A68 new balance mode ---
 
-	printk("[BAT][Ser]:suspend()---\n");
+	//printk("[BAT][Ser]:suspend()---\n");
 
 }
 //Eason resume always calculate capacity no matter if in   Pad or CableIn or BatLow+++
@@ -2874,7 +2874,7 @@ static void AXC_BatteryService_resume(struct AXI_BatteryServiceFacade *bat,int d
 
         printk("[BAT][Ser]:resume()+++\n");
 #ifndef ASUS_FACTORY_BUILD		
-	  ASUSEvtlog("[BAT][Bal]resume:%d\n",IsBalanceSuspendStartcharge);	
+	    ASUSEvtlog("[BAT][Bal]resume:%d\n",IsBalanceSuspendStartcharge);	
 #endif//ASUS_FACTORY_BUILD	
     //if(true == _this->IsSuspend){
 
@@ -2933,7 +2933,7 @@ static void AXC_BatteryService_resume(struct AXI_BatteryServiceFacade *bat,int d
 	AXC_BatteryService  *_this=
         container_of(bat, AXC_BatteryService, miParent);
 
-        printk("[BAT][Ser]:resume()+++\n");
+       // printk("[BAT][Ser]:resume()+++\n");
 #ifdef CONFIG_EEPROM_PADSTATION 
 	if(1==AX_MicroP_IsP01Connected())
 	{
@@ -2956,7 +2956,7 @@ static void AXC_BatteryService_resume(struct AXI_BatteryServiceFacade *bat,int d
                                    RTC_READY_DELAY_TIME * HZ);
         }
 
-        printk("[BAT][Ser]:resume()---\n");
+       // printk("[BAT][Ser]:resume()---\n");
 
 }
 //Eason resume always calculate capacity no matter if in   Pad or CableIn or BatLow---
@@ -3836,7 +3836,7 @@ static void AXC_BatteryService_reportPropertyCapacity(struct AXC_BatteryService 
                                       maxMah,
                                       intervalSinceLastUpdate);
 //Eason add to check full & 100%+++
-	if(true==_this->BatteryService_IsFULL && ( A66_capacity != 100 || gBMS_Cap != 100))
+	if(true==_this->BatteryService_IsFULL && ( A66_capacity != 100 || gBMS_Cap < 99))
 	{
         	printk("[BAT][Ser]Full but not 100 ,restart charging\n");
         	DoAfterDecideNotFull(_this);
@@ -3985,6 +3985,7 @@ static void AXC_BatteryService_reportPropertyCapacity(struct AXC_BatteryService 
 				gpCharger->EnableCharging(gpCharger,true);
 		}
 #else
+	printk("capacity: %d , pm8226_is_ac_usb_in : %d , is_boost_enable: %d \n",A66_capacity,pm8226_is_ac_usb_in(),is_boost_enable());
 	if(A66_capacity<100&&pm8226_is_ac_usb_in()&&is_boost_enable()==0)
 	{
 		gpCharger->EnableCharging(gpCharger,true);
